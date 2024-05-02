@@ -1,0 +1,15 @@
+---
+- hosts: web_server
+  become: yes
+  tasks:
+    - name: Configure environment variables
+      copy:
+        content: |
+          PORT=3000
+          MONGODB_URI=mongodb://localhost:27017/your-database-name
+        dest: /var/www/mern_app/.env
+
+    - name: Start Node.js application
+      command: npm start
+      args:
+        chdir: /var/www/mern_app

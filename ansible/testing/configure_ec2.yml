@@ -1,0 +1,44 @@
+---
+- name: Configure EC2 Instances
+  hosts: all
+  become: true
+  vars:
+    mongodb_bind_ip: 0.0.0.0  # MongoDB bind IP, allowing connections from any IP
+    app_directory: /var/www/mern_app  # Directory to deploy MERN app
+  tasks:
+    - name: Update package cache and install required packages
+      apt:
+        update_cache: yes
+        name: "{{ item }}"
+      loop:
+        - nginx  # For web server
+        - nodejs
+        - npm
+        - mongodb  # For database server
+        - git
+      become: true
+
+    - name: Ensure MongoDB service is enabled and started
+      service:
+        name: mongodb
+        state: started
+        enabled: yes
+
+    - name: Clone MERN app repository
+      git:
+        repo: https://github.com/UnpredictablePrashant/TravelMemory  # Replace with your app repo URL
+        dest: "{{ app_directory }}"
+        clone: yes
+        force: yes
+
+    - name: Install Node.js dependencies
+      npm:
+        path: "{{ app_directory }}"
+        state: present
+
+    - name: Configure and start the Node.js app
+      command: npm start
+      args:
+        chdir: "{{ app_directory }}"
+      async: 60  # Run npm start in the background
+      poll: 0

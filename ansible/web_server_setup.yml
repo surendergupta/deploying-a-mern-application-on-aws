@@ -1,0 +1,21 @@
+---
+- hosts: web_server
+  become: yes
+  tasks:
+    - name: Install Node.js and NPM
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - nodejs
+        - npm
+
+    - name: Clone MERN application repository
+      git:
+        repo: https://github.com/your-username/mern-app.git
+        dest: /var/www/mern_app
+        update: yes
+
+    - name: Install Node.js dependencies
+      npm:
+        path: /var/www/mern_app

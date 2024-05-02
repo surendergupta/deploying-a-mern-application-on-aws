@@ -1,0 +1,21 @@
+---
+- hosts: db_server
+  become: yes
+  tasks:
+    - name: Install MongoDB
+      apt:
+        name: mongodb
+        state: present
+
+    - name: Configure MongoDB
+      template:
+        src: mongodb.conf.j2
+        dest: /etc/mongodb.conf
+      notify:
+        - Restart MongoDB
+
+  handlers:
+    - name: Restart MongoDB
+      service:
+        name: mongodb
+        state: restarted

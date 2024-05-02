@@ -1,0 +1,31 @@
+---
+- name: Configure Nginx
+  hosts: web_server
+  become: true
+  vars:
+    app_domain: example.com  # Replace with your domain
+    app_directory: /var/www/mern_app  # Directory of MERN app
+  tasks:
+    - name: Remove default Nginx configuration
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Create Nginx virtual host configuration
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/{{ app_domain }}
+      notify:
+        - Reload Nginx
+
+    - name: Enable the virtual host configuration
+      file:
+        src: /etc/nginx/sites-available/{{ app_domain }}
+        dest: /etc/nginx/sites-enabled/{{ app_domain }}
+        state: link
+
+  handlers:
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded

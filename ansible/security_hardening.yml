@@ -1,0 +1,17 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Configure firewall (UFW)
+      apt:
+        name: ufw
+        state: present
+
+    - name: Allow SSH through firewall
+      ufw:
+        rule: allow
+        port: 22
+
+    - name: Enable firewall
+      ufw:
+        state: enabled
