@@ -83,7 +83,7 @@ resource "aws_subnet" "private_subnet" {
 # Create EIP for NAT gateway
 resource "aws_eip" "nat" {
   #instance = aws_nat_gateway.nat.id
-  vpc      = true
+  vpc = true
 }
 
 # Create NAT gateway
@@ -231,7 +231,7 @@ resource "aws_key_pair" "tm_key" {
 
 # Create EC2 instances for Web Server
 resource "aws_instance" "web_server" {
-  ami                    = "ami-830c94e3" # Specify your desired AMI
+  ami                    = "ami-0cf2b4e024cdb6960" # Specify your desired AMI
   instance_type          = "t3.micro"     # Adjust instance type as needed
   subnet_id              = aws_subnet.public_subnet.id
   security_groups        = [aws_security_group.public_sg.id]
@@ -249,7 +249,7 @@ resource "aws_instance" "web_server" {
 
 # Create EC2 instances for Database Server
 resource "aws_instance" "db_server" {
-  ami                    = "ami-830c94e3" # Specify your desired AMI
+  ami                    = "ami-0cf2b4e024cdb6960" # Specify your desired AMI
   instance_type          = "t3.micro"     # Adjust instance type as needed
   subnet_id              = aws_subnet.private_subnet.id
   security_groups        = [aws_security_group.db_sg.id]
@@ -258,6 +258,21 @@ resource "aws_instance" "db_server" {
   tags = {
     Name = "DatabaseServer"
   }
+}
+
+data "template_file" "ansible_inventory" {
+  template = <<-EOT
+[web_server]
+${join("\n", aws_instance.web_server[*].public_ip)}
+
+[db_server]
+${join("\n", aws_instance.db_server[*].private_ip)}
+EOT
+}
+
+resource "local_file" "ansible_inventory_file" {
+  filename = "../ansible/inventory.ini"
+  content  = data.template_file.ansible_inventory.rendered
 }
 
 output "web_server_public_ip" {
@@ -291,17 +306,17 @@ output "web_server_public_ip" {
   terraform destroy
 ```
 
-![alt text](image.png)
+![alt text](./screenshots/image.png)
 
-![alt text](image-1.png)
+![alt text](./screenshots/image-1.png)
 
-![alt text](image-2.png)
+![alt text](./screenshots/image-2.png)
 
-![alt text](image-3.png)
+![alt text](./screenshots/image-3.png)
 
-![alt text](image-4.png)
+![alt text](./screenshots/image-4.png)
 
-![alt text](image-5.png)
+![alt text](./screenshots/image-5.png)
 
 ## Configuration and Deployment
 
@@ -314,10 +329,6 @@ output "web_server_public_ip" {
 ```
 
 - **Inventory**: Create an Ansible inventory file (inventory.ini) with the IP addresses of your EC2 instances.
-```bash
-  sudo apt update
-  sudo apt install ansible
-```
 
 - **Execution**: Run Ansible playbooks to configure and deploy the application.
 ```bash
