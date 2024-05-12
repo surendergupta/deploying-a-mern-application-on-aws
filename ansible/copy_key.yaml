@@ -1,0 +1,11 @@
+---
+- name: Copy file to remote server
+  hosts: web_server
+  become: yes  
+  tasks:
+    - name: Copy file
+      ansible.builtin.copy:
+        src: ../terraform/terraform_tm_key.pem
+        dest: /home/ubuntu
+        owner: ubuntu
+        mode: 0400

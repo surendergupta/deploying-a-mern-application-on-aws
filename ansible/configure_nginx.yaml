@@ -3,8 +3,8 @@
   hosts: web_server
   become: true
   vars:
-    app_domain: example.com  # Replace with your domain
-    app_directory: /var/www/mern_app  # Directory of MERN app
+    app_domain: "{{ ansible_host }}"  # Replace with your domain
+    app_directory: /home/ubuntu/TravelMemory
   tasks:
     - name: Remove default Nginx configuration
       file:
@@ -23,6 +23,14 @@
         src: /etc/nginx/sites-available/{{ app_domain }}
         dest: /etc/nginx/sites-enabled/{{ app_domain }}
         state: link
+    
+    # - name: Uncomment server_names_hash_bucket_size directive
+    #   ansible.builtin.replace:
+    #     path: /etc/nginx/nginx.conf
+    #     regexp: '^(\s*)#(\s*server_names_hash_bucket_size.*)$'
+    #     replace: '\1\2' 
+    #   notify:
+    #     - Reload Nginx
 
   handlers:
     - name: Reload Nginx

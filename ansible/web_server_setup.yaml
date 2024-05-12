@@ -1,0 +1,39 @@
+---
+- hosts: web_server
+  become: yes
+  vars:
+    app_directory: /home/ubuntu/TravelMemory
+  tasks:
+    - name: Ensure directory exists for MERN app
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        owner: ubuntu
+        mode: "0700"
+
+    - name: Clone MERN application repository
+      git:
+        repo: https://github.com/surendergupta/TravelMemory.git
+        dest: "{{ app_directory }}"
+        force: true
+        update: yes
+
+    - name: Check if backend package.json exists
+      stat:
+        path: "{{ app_directory }}/backend/package.json"
+      register: backend_package_json
+
+    - name: Install backend Node.js dependencies
+      npm:
+        path: "{{ app_directory }}/backend"
+      when: backend_package_json.stat.exists
+    
+    - name: Check if frontend package.json exists
+      stat:
+        path: "{{ app_directory }}/frontend/package.json"
+      register: frontend_package_json
+
+    - name: Install frontend Node.js dependencies
+      npm:
+        path: "{{ app_directory }}/frontend"
+      when: frontend_package_json.stat.exists

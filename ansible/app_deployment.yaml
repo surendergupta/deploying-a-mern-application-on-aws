@@ -1,0 +1,92 @@
+---
+- name: Deployment of Frontend and Backend servers with Security Hardening
+  hosts: web_server
+  become: yes
+  vars:
+    app_domain: "{{ ansible_host }}"
+    app_directory: /home/ubuntu/TravelMemory
+    ssh_port: 22
+  tasks:
+    - name: Configure environment variables
+      copy:
+        content: |
+          PORT=3001
+          MONGO_URI='mongodb://root:secret1234@10.0.2.206:27017/travelmemory'
+        dest: "{{ app_directory }}/backend/.env"
+    
+    - name: Find and kill the process using port 3001
+      shell: "sudo ss -ltnp | grep ':3001 ' | grep 'pid=' | awk -F 'pid=' '{print $2}' | cut -d ',' -f 1 | xargs sudo kill -9"
+      ignore_errors: true
+    
+    - name: Find and kill the process using port 3000
+      shell: |
+        sudo lsof -t -i:3000 | xargs kill -9
+      ignore_errors: true
+    
+    - name: Start Node.js application
+      shell: |
+        cd {{ app_directory }}/backend
+        nohup node index.js > /dev/null 2>&1 &
+      async: 60
+      poll: 0
+      ignore_errors: true
+      
+    
+    - name: Update Url.js file
+      lineinfile:
+        path: "{{ app_directory }}/frontend/src/url.js"
+        regexp: '^export const baseUrl = .*'
+        line: 'export const baseUrl = "http://{{ app_domain }}/api";'
+
+    - name: Start React application in the background
+      shell: |
+        cd {{ app_directory }}/frontend
+        nohup npm start > /dev/null 2>&1 &
+      async: 60
+      poll: 0
+      ignore_errors: true
+
+    - name: Configure UFW (Uncomplicated Firewall)
+      apt:
+        name: ufw
+        state: latest
+      become: true
+
+    - name: Enable SSH access through UFW
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+      become: true
+
+    - name: Enable HTTP and HTTPS access through UFW
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+      become: true
+      loop:
+        - 80
+        - 443
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+      become: true
+
+    - name: Disable root login and password authentication
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+      notify: Restart sshd
+
+  handlers:
+  - name: Restart sshd
+    service:
+      name: sshd
+      state: restarted
+    become: true
+    ignore_errors: true
+

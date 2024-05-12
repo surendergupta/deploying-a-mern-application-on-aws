@@ -22,7 +22,7 @@ provider "aws" {
 }
 
 # Create VPC
-resource "aws_vpc" "mern_app" {
+resource "aws_vpc" "mern_app_vpc" {
   cidr_block = "10.0.0.0/16"
   tags = {
     Name = "mern_app"
@@ -31,10 +31,10 @@ resource "aws_vpc" "mern_app" {
 
 # Create public subnet
 resource "aws_subnet" "public_subnet" {
-  vpc_id            = aws_vpc.mern_app.id
+  vpc_id            = aws_vpc.mern_app_vpc.id
   cidr_block        = "10.0.1.0/24"
   availability_zone = "us-west-2a"
-  map_public_ip_on_launch = true
+  # map_public_ip_on_launch = true
   tags = {
     Name = "public_subnet"
   }
@@ -42,7 +42,7 @@ resource "aws_subnet" "public_subnet" {
 
 # Create private subnet
 resource "aws_subnet" "private_subnet" {
-  vpc_id            = aws_vpc.mern_app.id
+  vpc_id            = aws_vpc.mern_app_vpc.id
   cidr_block        = "10.0.2.0/24"
   availability_zone = "us-west-2b"
   tags = {
@@ -50,34 +50,40 @@ resource "aws_subnet" "private_subnet" {
   }
 }
 
-# Create EIP for NAT gateway
-resource "aws_eip" "nat" {
-  #instance = aws_nat_gateway.nat.id
-  vpc = true
-}
-
-# Create NAT gateway
-resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.private_subnet.id
-}
-
 # Create internet gateway
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.mern_app.id
+resource "aws_internet_gateway" "mern_app_igw" {
+  vpc_id = aws_vpc.mern_app_vpc.id
 
   tags = {
     Name = "mern_app_ig"
   }
 }
 
+# Create EIP for NAT gateway
+resource "aws_eip" "nat" {
+  tags = {
+    Name = "mern_app_eip"
+  }
+  vpc = true
+}
+
+# Create NAT gateway
+resource "aws_nat_gateway" "nat" {
+  depends_on = [ aws_eip.nat ]
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public_subnet.id
+  tags = {
+    Name = "mern_app_nat_gateway"
+  }
+}
+
 # Create route table for public subnet
 resource "aws_route_table" "public_route_table" {
-  vpc_id = aws_vpc.mern_app.id
+  vpc_id = aws_vpc.mern_app_vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
+    gateway_id = aws_internet_gateway.mern_app_igw.id
   }
 
   tags = {
@@ -85,18 +91,40 @@ resource "aws_route_table" "public_route_table" {
   }
 }
 
+# Create route table for private subnet
+resource "aws_route_table" "private_route_table" {
+  vpc_id = aws_vpc.mern_app_vpc.id
+  depends_on = [ aws_nat_gateway.nat ]
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat.id
+  }
+
+  tags = {
+    Name = "private_route_table"
+  }
+}
+
 # Associate public subnet with the public route table
 resource "aws_route_table_association" "public_route_table_association" {
+  depends_on = [ aws_subnet.public_subnet, aws_route_table.public_route_table ]
   subnet_id      = aws_subnet.public_subnet.id
   route_table_id = aws_route_table.public_route_table.id
+}
+
+# Associate private subnet with private route table
+resource "aws_route_table_association" "private_subnet_assoc" {
+  depends_on = [ aws_subnet.private_subnet, aws_route_table.private_route_table ]
+  subnet_id      = aws_subnet.private_subnet.id
+  route_table_id = aws_route_table.private_route_table.id
 }
 
 # Create security group for instances in the public subnet
 resource "aws_security_group" "public_sg" {
   name        = "public_sg"
   description = "Allow inbound traffic to instances in the public subnet"
-  vpc_id      = aws_vpc.mern_app.id
-
+  vpc_id      = aws_vpc.mern_app_vpc.id
+  depends_on = [ aws_vpc.mern_app_vpc ]
   # Allow SSH
   ingress {
     from_port   = 22
@@ -121,47 +149,48 @@ resource "aws_security_group" "public_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Allow 3001 for backend
+  ingress {
+    from_port   = 3001
+    to_port     = 3001
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow 3000 for frontend
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # Allow all outbound traffic
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+    self = false
+    security_groups = []
+    ipv6_cidr_blocks = []
+    prefix_list_ids = []
+    description = ""
   }
-}
-
-# Create route table for private subnet
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.mern_app.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat.id
-  }
-
-  tags = {
-    Name = "private_route_table"
-  }
-}
-
-# Associate private subnet with private route table
-resource "aws_route_table_association" "private_subnet_assoc" {
-  subnet_id      = aws_subnet.private_subnet.id
-  route_table_id = aws_route_table.private.id
 }
 
 # Define security groups private
-resource "aws_security_group" "db_sg" {
-  name        = "db_sg"
+resource "aws_security_group" "private_sg" {
+  name        = "private_sg"
   description = "Security group for database server"
-  vpc_id      = aws_vpc.mern_app.id
+  vpc_id      = aws_vpc.mern_app_vpc.id
 
   # Allow SSH from your IP only
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Specify your IP
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   # Allow MongoDB port
@@ -172,6 +201,14 @@ resource "aws_security_group" "db_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Allow HTTP
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # Allow all outbound traffic
   egress {
     from_port   = 0
@@ -181,36 +218,29 @@ resource "aws_security_group" "db_sg" {
   }
 }
 
-# Generate a new RSA private key
-resource "tls_private_key" "tm_key" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
-}
-
-# Save the public key in a local file
-resource "local_file" "tm_key_public_key" {
-  filename = "${path.module}/tm_key.pub"
-  content  = tls_private_key.tm_key.public_key_openssh
-}
-
-# Create key pair in AWS using the public key
-resource "aws_key_pair" "tm_key" {
-  key_name   = "tm_key"
-  public_key = local_file.tm_key_public_key.content
-}
-
 # Create EC2 instances for Web Server
 resource "aws_instance" "web_server" {
+  count                  = var.web_server_count
   ami                    = "ami-0cf2b4e024cdb6960" # Specify your desired AMI
   instance_type          = "t3.micro"     # Adjust instance type as needed
   subnet_id              = aws_subnet.public_subnet.id
-  security_groups        = [aws_security_group.public_sg.id]
+  vpc_security_group_ids = [aws_security_group.public_sg.id]
   associate_public_ip_address = true
-
-  # Add your SSH key name
-  key_name               = aws_key_pair.tm_key.key_name
+  key_name               = var.aws_key_pair_name
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo apt-get update -y
+    sudo apt-get install -y ca-certificates curl gnupg
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg || { echo "Failed to import GPG key"; exit 1; }
+    NODE_MAJOR=18
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+    sudo apt-get update -y
+    sudo apt-get install -y nodejs
+  EOF
+  
   tags = {
-    Name = "WebServer"
+    Name = "WebServer_${count.index + 1}"
     Environment = "Production"
     Owner       = "Surender Gupta"
     Project     = "Travel Memory"
@@ -219,32 +249,46 @@ resource "aws_instance" "web_server" {
 
 # Create EC2 instances for Database Server
 resource "aws_instance" "db_server" {
+  count                  = var.db_server_count
   ami                    = "ami-0cf2b4e024cdb6960" # Specify your desired AMI
   instance_type          = "t3.micro"     # Adjust instance type as needed
   subnet_id              = aws_subnet.private_subnet.id
-  security_groups        = [aws_security_group.db_sg.id]
-  # Add your SSH key name
-  key_name               = aws_key_pair.tm_key.key_name
+  security_groups        = [aws_security_group.private_sg.id]
+  associate_public_ip_address = false
+  key_name               = var.aws_key_pair_name
+  
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo apt update -y
+    sudo apt install -y docker.io
+    sudo usermod -aG docker $USER
+    sudo chmod 666 /var/run/docker.sock
+  EOF
+
   tags = {
-    Name = "DatabaseServer"
+    Name = "DatabaseServer_${count.index + 1}"
   }
 }
 
 data "template_file" "ansible_inventory" {
   template = <<-EOT
 [web_server]
-${join("\n", aws_instance.web_server[*].public_ip)}
+%{ for i in range(var.web_server_count) ~}
+tm_server_${i+1} ansible_host=${element(aws_instance.web_server[*].public_ip, i)}
+%{ endfor ~}
 
 [db_server]
-${join("\n", aws_instance.db_server[*].private_ip)}
+%{ for i in range(var.db_server_count) ~}
+db_server_${i+1} ansible_host=${element(aws_instance.db_server[*].private_ip, i)}
+%{ endfor ~}
+
+[all:vars]
+ansible_user=ubuntu
+ansible_ssh_private_key_file=~/.ssh/ansible_key
 EOT
 }
 
 resource "local_file" "ansible_inventory_file" {
   filename = "../ansible/inventory.ini"
   content  = data.template_file.ansible_inventory.rendered
-}
-
-output "web_server_public_ip" {
-  value = aws_instance.web_server.public_ip
 }

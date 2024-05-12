@@ -2,4 +2,6 @@ terraform/.terraform/
 terraform/.terraform.lock.hcl
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
-terraform/tm_key.pub
+terraform/terraform_tm_key.pem
+terraform/run.sh
+ansible/testing
